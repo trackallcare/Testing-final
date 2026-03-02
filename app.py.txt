@@ -1,0 +1,66 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+
+st.set_page_config(page_title="Pharmacy Financial Tracker", layout="wide")
+st.title("💊 Pharmacy Financial Tracker")
+st.markdown("Upload your bank CSV file to automatically track monthly income, expenses, and profit.")
+
+uploaded_file = st.file_uploader("Upload Bank CSV File", type=["csv"])
+
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
+    
+    df.columns = df.columns.str.lower().str.strip()
+    
+    date_col = "date"
+    desc_col = "description"
+    debit_col = "debit"
+    credit_col = "credit"
+
+    df[date_col] = pd.to_datetime(df[date_col])
+    df["amount"] = df[credit_col].fillna(0) - df[debit_col].fillna(0)
+    
+    def categorize(description):
+        desc = str(description).lower()
+        if "rent" in desc:
+            return "Rent"
+        elif "salary" in desc:
+            return "Salary"
+        elif "pharma" in desc or "supplier" in desc:
+            return "Supplier"
+        elif "electric" in desc or "water" in desc:
+            return "Utilities"
+        elif "marketing" in desc:
+            return "Marketing"
+        else:
+            return "Other"
+
+    df["category"] = df[desc_col].apply(categorize)
+    df["month"] = df[date_col].dt.to_period("M")
+
+    monthly_income = df[df["amount"] > 0].groupby("month")["amount"].sum()
+    monthly_expenses = df[df["amount"] < 0].groupby("month")["amount"].sum().abs()
+    
+    monthly = pd.DataFrame({
+        "Income": monthly_income,
+        "Expenses": monthly_expenses
+    }).fillna(0)
+    
+    monthly["Profit"] = monthly["Income"] - monthly["Expenses"]
+    monthly["Profit Margin %"] = (monthly["Profit"] / monthly["Income"] * 100).round(2)
+    
+    st.subheader("📊 Monthly Summary")
+    st.dataframe(monthly.style.format({"Income": "{:,.2f}", "Expenses": "{:,.2f}", "Profit": "{:,.2f}", "Profit Margin %": "{:.2f}%"}))
+    
+    st.subheader("📈 Monthly Financial Trend")
+    fig, ax = plt.subplots(figsize=(10,5))
+    monthly.plot(ax=ax, marker="o")
+    ax.set_xlabel("Month")
+    ax.set_ylabel("Amount")
+    ax.set_title("Monthly Income, Expenses, and Profit")
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+    
+    csv = monthly.to_csv().encode("utf-8")
+    st.download_button("💾 Download Monthly Report", csv, "monthly_report.csv", "text/csv")
